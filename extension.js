@@ -1,6 +1,6 @@
 const vscode = require('vscode');
-const axios = require('axios');
-const baseUrl = 'https://api.money.126.net/data/feed/';
+const axios = require('axios').default;
+let stockApi = '';
 let statusBarItems = {};
 let stockCodes = [];
 let updateInterval = 10000;
@@ -23,23 +23,18 @@ function init() {
 	if (isShowTime()) {
 		stockCodes = getStockCodes();
 		updateInterval = getUpdateInterval();
+        stockApi = getStockApi();
 		fetchAllData();
 		timer = setInterval(fetchAllData, updateInterval);
 	} else {
+        timer && clearInterval(timer)
 		hideAllStatusBar();
 	}
 }
 
 function initShowTimeChecker() {
 	showTimer && clearInterval(showTimer);
-	showTimer = setInterval(() => {
-		if (isShowTime()) {
-			init();
-		} else {
-			timer && clearInterval(timer);
-			hideAllStatusBar();
-		}
-	}, 1000 * 60 * 10);
+	showTimer = setInterval(init, 1000 * 60 * 10);
 }
 
 function hideAllStatusBar() {
@@ -51,7 +46,9 @@ function hideAllStatusBar() {
 
 function handleConfigChange() {
 	timer && clearInterval(timer);
+    timer = null;
 	showTimer && clearInterval(showTimer);
+    showTimer = null;
 	const codes = getStockCodes();
 	Object.keys(statusBarItems).forEach((item) => {
 		if (codes.indexOf(item) === -1) {
@@ -60,6 +57,7 @@ function handleConfigChange() {
 			delete statusBarItems[item];
 		}
 	});
+    stockApi = getStockApi();
 	init();
 }
 
@@ -67,23 +65,24 @@ function getStockCodes() {
 	const config = vscode.workspace.getConfiguration();
 	const stocks = config.get('stock-watch.stocks');
 	return stocks.map((code) => {
-		if (isNaN(code[0])) {
-			if (code.toLowerCase().indexOf('us_') > -1) {
-				return code.toUpperCase();
-			} else if (code.indexOf('hk') > -1) {
-				return code;
-			} else {
-				return code.toLowerCase().replace('sz', '1').replace('sh', '0');
-			}
-		} else {
-			return (code[0] === '6' ? '0' : '1') + code;
-		}
+        code = code.toUpperCase();
+        if (code.indexOf('SZ') == -1 && code.indexOf('SH') == -1) {
+            return;
+        }
+        return code;
 	});
 }
 
 function getUpdateInterval() {
 	const config = vscode.workspace.getConfiguration();
 	return config.get('stock-watch.updateInterval');
+}
+
+// stock api
+// 枚举，获取stock api来源
+function getStockApi() {
+    const config = vscode.workspace.getConfiguration();
+	return config.get('stock-watch.api');
 }
 
 function isShowTime() {
@@ -123,10 +122,13 @@ function getItemColor(item) {
 	return item.percent >= 0 ? riseColor : fallColor;
 }
 
-function fetchAllData() {
-	console.log('fetchAllData');
-	axios
-		.get(`${baseUrl}${stockCodes.join(',')}?callback=a`)
+function neteaseFetch() {
+    let baseUrl = 'https://api.money.126.net/data/feed/';
+    let stockList = stockCodes.map(code => {
+        return code.replace('SZ', '1').replace('SH', '0');
+    });
+    axios
+		.get(`${baseUrl}${stockList.join(',')}?callback=a`)
 		.then(
 			(rep) => {
 				try {
@@ -148,6 +150,51 @@ function fetchAllData() {
 		.catch((error) => {
 			console.error(error);
 		});
+}
+
+function xueqiuFetch() {
+    let baseUrl = 'https://stock.xueqiu.com/v5/stock/realtime/quotec.json?symbol=';
+    axios.get(`${baseUrl}${stockCodes.join(',')}`)
+        .then(
+            (rep) => {
+                console.log(rep);
+                try {
+                    const result = rep.data;
+                    let data = [];
+                    if (result.data) {
+                       result.data.map(v => {
+                            let item = {};
+                            item.name = v['symbol'];
+                            item.price = v['current'];
+                            item.percent = v['percent'];
+                            item.symbol = v['symbol'];
+                            item.high = v['high'];
+                            item.low = v['low'];
+                            item.open = v['open'];
+                            item.yestclose = v['last_close'];
+                            data.push(item);
+                        });
+                    }
+                    displayData(data);
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        )
+        .catch(error => {
+            console.error(error);
+        });
+}
+
+function fetchAllData() {
+	console.log('fetchAllData');
+    if (stockApi === 'netease') {
+        return neteaseFetch();
+    } else if (stockApi === 'xueqiu') {
+        return xueqiuFetch();
+    } else {
+        console.log('not set api source');
+    }
 }
 
 function displayData(data) {

@@ -17,8 +17,8 @@
 		"Other"
 	],
 	"activationEvents": [
-		"*"
-	],
+        "onStartupFinished"
+    ],
 	"main": "./extension",
 	"contributes": {
 		"configuration": {
@@ -28,7 +28,7 @@
 					"default": [
 						"sh000001"
 					],
-					"description": "配置需要监控的股票代码，港股请加上hk前缀，美股加上US_前缀"
+					"description": "配置需要监控的股票代码，深市添加SZ前缀，沪市添加SH前缀"
 				},
 				"stock-watch.updateInterval": {
 					"type": "number",
@@ -52,6 +52,15 @@
 						15
 					],
 					"description": "显示的时间段"
+				},
+				"stock-watch.api": {
+					"type": "string",
+					"enum": [
+						"xueqiu",
+						"netease"
+					],
+					"default": "xueqiu",
+					"description": "配置请求股票接口api来源，雪球/网易"
 				}
 			}
 		}
